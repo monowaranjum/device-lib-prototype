@@ -1,0 +1,15 @@
+#version 430
+
+#define WARP 32
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) buffer lay0 { float matA[]; };
+layout(std430, binding = 1) buffer lay2 { float matOut[]; };
+
+void main() { 
+    uvec3 workGroupId = gl_WorkGroupID; 
+    uint wgIdx = workGroupId.x ;
+    uint threadIdx = gl_LocalInvocationIndex;
+    uint k = wgIdx * WARP + threadIdx;
+    matOut[k] = abs(matA[k]);
+}
