@@ -22,18 +22,26 @@ void main() {
   uint load_tileColumn = localInvocationId.x % TILE_SIZE ; // Local workgroup size is 1D
 
   uint vRow_A = (dim[0]/TILE_SIZE); // Finding out number of tiles available on the row dimension.
-  uint vColumn_A = (dim[1]/TILE_SIZE); // Finding out number of tiles available on the column dimension. 
+  uint vColumn_A = (dim[1]/TILE_SIZE); // Finding out number of tiles available on the column dimension.
 
+  uint vRow_B = (dim[2] / TILE_SIZE); 
+  uint vColumn_B = (dim[3] / TILE_SIZE); 
+  
   uint x_tile_A = workGroupId.x / vColumn_A; 
   uint y_tile_A = workGroupId.x % vColumn_A;
 
-  uint vRow_B = dim[2]/TILE_SIZE;
-  uint vColumn_B = dim[3]/TILE_SIZE;
+  uint x_tile_B = workGroupId.x / vColumn_B;
+  uint y_tile_B = workGroupId.x % vColumn_B;
 
-  tileA[load_tileRow][load_tileColumn] =   ;
-  tileB[load_tileRow][load_tileColumn] =   ;
+  uint location_A = (x_tile_A * TILE_SIZE + load_tileRow) * dim[1] + (y_tile_A * TILE_SIZE) + load_tileColumn;
+  uint location_B = (x_tile_B * TILE_SIZE + load_tileRow) * dim[3] + (y_tile_B * TILE_SIZE) + load_tileColumn;
+
+  tileA[load_tileRow][load_tileColumn] = matA[location_A];
+  tileB[load_tileRow][load_tileColumn] = matB[location_B];
 
   barrier(); 
+
+  
 
 
 
