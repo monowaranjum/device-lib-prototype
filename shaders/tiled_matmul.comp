@@ -4,7 +4,7 @@ layout(local_size_x = 256 , local_size_y = 1, local_size_z = 1) in;
 
 layout(std430, binding = 0) readonly buffer lay0 { float matA[]; };
 layout(std430, binding = 1) readonly buffer lay1 { float matB[]; };
-layout(std430, binding = 2) readonly buffer lay2{ uint dim[]; };
+layout(std430, binding = 2) readonly buffer lay2 { uint dim[]; };
 
 layout(std430, binding = 3) buffer lay3 { float matOut[]; };
 
@@ -13,12 +13,27 @@ shared float tileB[TILE_SIZE][TILE_SIZE];
 
 void main() {
   uvec3 numWorkGroups = gl_NumWorkGroups; 
-  uvec3 workGroupId = gl_WorkGroupID;
-  uvec3 localInvocationId = gl_LocalInvocationID;
-  uvec3 globalInvocationId = gl_GlobalInvocationID;
-  uint localInvocationIndex = gl_LocalInvocationIndex;
+  uvec3 workGroupId = gl_WorkGroupID; // This one is the id based on vkCmdDispatch
+  uvec3 localInvocationId = gl_LocalInvocationID; // This one is basically thread id based on local layout
+  uvec3 globalInvocationId = gl_GlobalInvocationID; // I dont know -_- 
+  uint localInvocationIndex = gl_LocalInvocationIndex; // Depends on the previous variable
 
-  
+  uint load_tileRow = localInvocationId.x / TILE_SIZE ; // Local workgroup size is 1D
+  uint load_tileColumn = localInvocationId.x % TILE_SIZE ; // Local workgroup size is 1D
+
+  uint vRow_A = (dim[0]/TILE_SIZE); // Finding out number of tiles available on the row dimension.
+  uint vColumn_A = (dim[1]/TILE_SIZE); // Finding out number of tiles available on the column dimension. 
+
+  uint x_tile_A = workGroupId.x / vColumn_A; 
+  uint y_tile_A = workGroupId.x % vColumn_A;
+
+  uint vRow_B = dim[2]/TILE_SIZE;
+  uint vColumn_B = dim[3]/TILE_SIZE;
+
+  tileA[load_tileRow][load_tileColumn] =   ;
+  tileB[load_tileRow][load_tileColumn] =   ;
+
+  barrier(); 
 
 
 
