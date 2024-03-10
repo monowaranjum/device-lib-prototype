@@ -15,6 +15,7 @@ void main() {
   uvec3 numWorkGroups = gl_NumWorkGroups; 
   uvec3 workGroupId = gl_WorkGroupID; // This one is the id based on vkCmdDispatch
   uvec3 localInvocationId = gl_LocalInvocationID; // This one is basically thread id based on local layout
+  uvec3 wgSize = gl_WorkGroupSize;
   uvec3 globalInvocationId = gl_GlobalInvocationID; // I dont know -_- 
   uint localInvocationIndex = gl_LocalInvocationIndex; // Depends on the previous variable
 
@@ -36,16 +37,20 @@ void main() {
   uint location_A = (x_tile_A * TILE_SIZE + load_tileRow) * dim[1] + (y_tile_A * TILE_SIZE) + load_tileColumn;
   uint location_B = (x_tile_B * TILE_SIZE + load_tileRow) * dim[3] + (y_tile_B * TILE_SIZE) + load_tileColumn;
 
+  if(location_A >= dim[0]*dim[1] || location_B >= dim[2]*dim[3]){
+    return;
+  }
+
   tileA[load_tileRow][load_tileColumn] = matA[location_A];
   tileB[load_tileRow][load_tileColumn] = matB[location_B];
 
   barrier(); 
 
-  
-
-
-
-
-
+  // Do the matmul here
+  float acc = 0.0;
+  for(uint k = 0 ; k<TILE_SIZE; k++){
+    acc += tileA[load_tileRow][k]*tileB[k][load_tileColumn];
+  }
+  barrier();
 
 }

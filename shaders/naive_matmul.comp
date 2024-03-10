@@ -1,0 +1,27 @@
+#version 430
+layout(local_size_x = 16 , local_size_y = 16, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer lay0 { float matA[]; }; // M X K
+layout(std430, binding = 1) readonly buffer lay1 { float matB[]; }; // K X N
+layout(std430, binding = 2) readonly buffer lay2 { uint dim[]; }; // M , K , N
+
+layout(std430, binding = 3) buffer lay3 { float matOut[]; };
+
+void main(){
+    uvec3 blockIdx = gl_WorkGroupID;
+    uint M = dim[0];
+    uint K = dim[1];
+    uint N = dim[2];
+
+    uint x = blockIdx.x *  gl_WorkGroupSize.x + gl_LocalInvocationID.x; // The x co-ordinate of the position being computed
+    uint y = blockIdx.y * gl_WorkGroupSize.y + gl_LocalInvocationID.y; // The y co-ordinate of the position being computed
+
+    if(x< M && y< N){
+        float acc = 0.0;
+        for(int i=0; i<K;i++){
+            acc+= matA[x*K + i] * matB[i*N+ y];
+        }
+        matOut[x*N+y] = acc;
+    }
+
+}
