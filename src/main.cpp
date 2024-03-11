@@ -219,7 +219,7 @@ getBuffers(vk::Device &device, vk::PhysicalDevice &physicalDevice,
 
 map<string, vector<pair<vk::Buffer, vk::DeviceMemory>>>
 getMatmulBuffers(vk::Device &device, vk::PhysicalDevice &physicalDevice,
-                 uint32_t computeQueueFamilyIndex, int M, int K, int N)
+                 uint32_t computeQueueFamilyIndex, float *a, float *b, uint32_t *dim,  int M, int K, int N)
 {
 
     // Matrix A is M X K
@@ -317,7 +317,7 @@ getMatmulBuffers(vk::Device &device, vk::PhysicalDevice &physicalDevice,
     vk::MemoryAllocateInfo inBuffer_B_MemoryAllocateInfo(
         inBuffer_B_MemoryRequirements.size, memoryTypeIndex);
     vk::MemoryAllocateInfo inBuffer_dim_MemoryAllocateInfo(
-        inBuffer_dim_MemoryRequirements.size, memoryTypeIndex);
+        inBuffer_dim_MemoryRequirements.size, memoryTypeIndex);   
     vk::MemoryAllocateInfo outBuffer_C_MemoryAllocateInfo(
         outBuffer_C_MemoryRequirements.size, memoryTypeIndex);
 
@@ -334,22 +334,36 @@ getMatmulBuffers(vk::Device &device, vk::PhysicalDevice &physicalDevice,
         device.allocateMemory(outBuffer_C_MemoryAllocateInfo);
 
     // Map memory and write
-    float *inBufferPtr =
-        static_cast<float *>(device.mapMemory(inBufferMemory, 0, BufferSize));
-    for (uint32_t k = 0; k < NumElements; ++k)
-    {
-        inBufferPtr[k] = (float)k - (NumElements / 2);
+    float *inBuffer_A_Ptr = static_cast<float *>(device.mapMemory(inBuffer_A_Memory, 0, BufferSize_A));
+    float *inBuffer_B_Ptr = static_cast<float *>(
+        device.mapMemory(inBuffer_B_Memory, 0, BufferSize_B));
+    uint32_t *inBuffer_dim_Ptr = static_cast<uint32_t *>(
+        device.mapMemory(inBuffer_dim_Memory, 0, BufferSize_dim));
+
+    for (int k = 0; k < M * K ; ++k){
+        inBuffer_A_Ptr[k] = a[k];
     }
-    device.unmapMemory(inBufferMemory);
+    for(int k = 0; k<K*N ; k++){
+        inBuffer_B_Ptr[k] = b[k];
+    }
+    inBuffer_dim_Ptr[0] = M;
+    inBuffer_dim_Ptr[1] = K;
+    inBuffer_dim_Ptr[2] = N;
+
+    device.unmapMemory(inBuffer_A_Memory);
+    device.unmapMemory(inBuffer_B_Memory);
+    device.unmapMemory(inBuffer_dim_Memory);
 
     // Bind buffers to memory
-    device.bindBufferMemory(inBuffer, inBufferMemory, 0);
-    device.bindBufferMemory(outBuffer, outBufferMemory, 0);
+    device.bindBufferMemory(inBuffer_A, inBuffer_A_Memory, 0);
+    device.bindBufferMemory(inBuffer_B, inBuffer_B_Memory, 0);
+    device.bindBufferMemory(inBuffer_dim, inBuffer_dim_Memory, 0);
+    device.bindBufferMemory(outBuffer_C, outBuffer_C_Memory, 0);
 
     vector<pair<vk::Buffer, vk::DeviceMemory>> inputVectors = {
-        make_pair(inBuffer, inBufferMemory)};
+        make_pair(inBuffer_A, inBuffer_A_Memory), make_pair(inBuffer_B, inBuffer_B_Memory), make_pair(inBuffer_dim, inBuffer_dim_Memory)};
     vector<pair<vk::Buffer, vk::DeviceMemory>> outputVectors = {
-        make_pair(outBuffer, outBufferMemory)};
+        make_pair(outBuffer_C, outBuffer_C_Memory)};
     map<string, vector<pair<vk::Buffer, vk::DeviceMemory>>> ret;
     ret["input"] = inputVectors;
     ret["output"] = outputVectors;
