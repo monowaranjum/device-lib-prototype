@@ -9,40 +9,43 @@
 #include <random>
 
 #include <vulkan/vulkan.hpp>
-#define NUM 1048576
-#define THREAD_PER_WARP 32
+
+#define THREAD_PER_WG 32
 using namespace std;
 
-
-void matMulGen(float *a, float *b, float *c, int M, int K, int N){
+void matMulGen(float *a, float *b, float *c, int M, int K, int N)
+{
     random_device rd;
     mt19937 e2(rd);
     uniform_real_distribution<> dist(-10.0, 10.0);
 
     // Populate
 
-    for(int i=0;i< M*K; i++){
+    for (int i = 0; i < M * K; i++)
+    {
         a[i] = dist(e2);
     }
 
-    for(int i=0;i<K*N;i++){
+    for (int i = 0; i < K * N; i++)
+    {
         b[i] = dist(e2);
     }
 
     // Do the actual Matmul
 
-    for(int i=0;i<M;i++){
-        for(int j=0; j<N;j++){
+    for (int i = 0; i < M; i++)
+    {
+        for (int j = 0; j < N; j++)
+        {
             float temp = 0.0;
-            for(int k=0;k<K;k++){
-                temp += a[i*K+ k ]* b[k*N + j ];
+            for (int k = 0; k < K; k++)
+            {
+                temp += a[i * K + k] * b[k * N + j];
             }
-            c[i*N +j] = temp; 
+            c[i * N + j] = temp;
         }
     }
 }
-
-
 
 class PipelineComponents
 {
@@ -219,7 +222,7 @@ getBuffers(vk::Device &device, vk::PhysicalDevice &physicalDevice,
 
 map<string, vector<pair<vk::Buffer, vk::DeviceMemory>>>
 getMatmulBuffers(vk::Device &device, vk::PhysicalDevice &physicalDevice,
-                 uint32_t computeQueueFamilyIndex, float *a, float *b, uint32_t *dim,  int M, int K, int N)
+                 uint32_t computeQueueFamilyIndex, float *a, float *b, uint32_t *dim, int M, int K, int N)
 {
 
     // Matrix A is M X K
@@ -317,7 +320,7 @@ getMatmulBuffers(vk::Device &device, vk::PhysicalDevice &physicalDevice,
     vk::MemoryAllocateInfo inBuffer_B_MemoryAllocateInfo(
         inBuffer_B_MemoryRequirements.size, memoryTypeIndex);
     vk::MemoryAllocateInfo inBuffer_dim_MemoryAllocateInfo(
-        inBuffer_dim_MemoryRequirements.size, memoryTypeIndex);   
+        inBuffer_dim_MemoryRequirements.size, memoryTypeIndex);
     vk::MemoryAllocateInfo outBuffer_C_MemoryAllocateInfo(
         outBuffer_C_MemoryRequirements.size, memoryTypeIndex);
 
@@ -340,10 +343,12 @@ getMatmulBuffers(vk::Device &device, vk::PhysicalDevice &physicalDevice,
     uint32_t *inBuffer_dim_Ptr = static_cast<uint32_t *>(
         device.mapMemory(inBuffer_dim_Memory, 0, BufferSize_dim));
 
-    for (int k = 0; k < M * K ; ++k){
+    for (int k = 0; k < M * K; ++k)
+    {
         inBuffer_A_Ptr[k] = a[k];
     }
-    for(int k = 0; k<K*N ; k++){
+    for (int k = 0; k < K * N; k++)
+    {
         inBuffer_B_Ptr[k] = b[k];
     }
     inBuffer_dim_Ptr[0] = M;
@@ -410,7 +415,7 @@ vk::ShaderModule getPipeline(vk::Device &device,
                              PipelineComponents &pipelineComponents)
 {
     std::vector<char> shaderContents;
-    if (std::ifstream shaderFile{"shaders/relu.spv",
+    if (std::ifstream shaderFile{"shaders/naive_matmul.spv",
                                  std::ios::binary | std::ios::ate})
     {
         const size_t fileSize =
@@ -432,6 +437,10 @@ vk::ShaderModule getPipeline(vk::Device &device,
         {{0, vk::DescriptorType::eStorageBuffer, 1,
           vk::ShaderStageFlagBits::eCompute},
          {1, vk::DescriptorType::eStorageBuffer, 1,
+          vk::ShaderStageFlagBits::eCompute},
+         {2, vk::DescriptorType::eStorageBuffer, 1,
+          vk::ShaderStageFlagBits::eCompute},
+         {3, vk::DescriptorType::eStorageBuffer, 1,
           vk::ShaderStageFlagBits::eCompute}};
     vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo(
         vk::DescriptorSetLayoutCreateFlags(), descriptorSetLayoutBinding);
@@ -472,13 +481,12 @@ vk::ShaderModule getPipeline(vk::Device &device,
 
 pair<vk::DescriptorPool, vk::DescriptorSet>
 getDescriptors(vk::Device &device, vk::DescriptorSetLayout &descriptorSetLayout,
-               vk::Buffer &inBuffer, vk::Buffer &outBuffer,
-               uint32_t numElements)
+               std::vector<pair<vk::Buffer, uint32_t size>> &buffers)
 {
     // Descriptor sets must be allocated in a vk::DescriptorPool, so we need to
     // create one first
     vk::DescriptorPoolSize descriptorPoolSize(vk::DescriptorType::eStorageBuffer,
-                                              2);
+                                              4); // 4 storage buffers for matmul
     vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo(
         vk::DescriptorPoolCreateFlags(), 1, descriptorPoolSize);
     vk::DescriptorPool descriptorPool =
@@ -490,17 +498,28 @@ getDescriptors(vk::Device &device, vk::DescriptorSetLayout &descriptorSetLayout,
     const std::vector<vk::DescriptorSet> descriptorSets =
         device.allocateDescriptorSets(descriptorSetAllocInfo);
     vk::DescriptorSet descriptorSet = descriptorSets.front();
-    vk::DescriptorBufferInfo inBufferInfo(inBuffer, 0,
-                                          numElements * sizeof(int32_t));
-    vk::DescriptorBufferInfo outBufferInfo(outBuffer, 0,
-                                           numElements * sizeof(int32_t));
 
-    const std::vector<vk::WriteDescriptorSet> writeDescriptorSets = {
-        {descriptorSet, 0, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
-         &inBufferInfo},
-        {descriptorSet, 1, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
-         &outBufferInfo},
-    };
+    std::vector<vk::WriteDescriptorSet> writeDescriptorSets;
+    // Important: should match the buffer sequence and layout in the compute shader.
+    int id = 0;
+    for (auto elem::buffers)
+    {
+        vk::DescriptorBufferInfo bufferInfo(elem.first, 0, elem.second * sizeof(float));
+        writeDescriptorSets.push_back({descriptorSet, id, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &bufferInfo});
+        id++;
+    }
+
+    // vk::DescriptorBufferInfo inBuffer_A_Info(inBuffer, 0,
+    //                                       numElements * sizeof(int32_t));
+    // vk::DescriptorBufferInfo outBufferInfo(outBuffer, 0,
+    //                                        numElements * sizeof(int32_t));
+
+    // const  = {
+    //     {descriptorSet, 0, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
+    //      &inBufferInfo},
+    //     {descriptorSet, 1, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
+    //      &outBufferInfo},
+    // };
     device.updateDescriptorSets(writeDescriptorSets, {});
     return make_pair(descriptorPool, descriptorSet);
 }
@@ -534,7 +553,7 @@ CommandComponents getCommandComponents(vk::Device &device,
         0,                                 // First descriptor set
         {descriptorset},                   // List of descriptor sets
         {});                               // Dynamic offsets
-    cmdBuffer.dispatch(NUM / THREAD_PER_WG, 1, 1);
+    cmdBuffer.dispatch((M * N) / THREAD_PER_WG, 1, 1);
     cmdBuffer.end();
 
     // Fence and submit
@@ -557,42 +576,62 @@ void execute(CommandComponents &cmdComponents, vk::Device &device)
     (void)device.waitForFences({cmdComponents.fence}, true, uint64_t(-1));
 }
 
-void showResult(vk::DeviceMemory &inBufferMemory, vk::DeviceMemory &outBufferMemory, vk::Device &device)
+void showResult(vk::DeviceMemory &outBufferMemory, float *c, vk::Device &device, int size)
 {
-    float *inBufferPtr = static_cast<float *>(device.mapMemory(inBufferMemory, 0, NUM * sizeof(float)));
-    float *outBufferPtr = static_cast<float *>(
-        device.mapMemory(outBufferMemory, 0, NUM * sizeof(int32_t)));
 
-    for (int k = 0; k < NUM; k++)
+    float *outBufferPtr = static_cast<float *>(
+        device.mapMemory(outBufferMemory, 0, size * sizeof(float)));
+
+    for (int k = 0; k < size; k++)
     {
-        if (outBufferPtr[k] != max(0.0f, inBufferPtr[k]))
+        if (outBufferPtr[k] != c[k])
         {
-            printf("Mismatch at %d , %f %f\n", k, inBufferPtr[k], outBufferPtr[k]);
+            printf("Mismatch at %d , %f %f\n", k, c[k], outBufferPtr[k]);
         }
     }
 
     printf("Mismatch check complete.\n");
-
-    device.unmapMemory(inBufferMemory);
     device.unmapMemory(outBufferMemory);
 }
 
 int main(int argc, char const *argv[])
 {
-    // Create a bunch of stuff.
+
+    int m = 4096;
+    int k = 1024;
+    int n = 4096;
+
+    float *a = (float *)malloc(m * k * sizeof(float));
+    float *b = (float *)malloc(k * n * sizeof(float));
+    uint32_t dim[3] = {m, k, n};
+    float *c = (float *)malloc(m * n * sizeof(float));
+
+    // Ground truth generation.
+    matMulGen(a, b, c, m, k, n);
+
+    // Create a bunch of stuff that are not related to buffer.
     vk::Instance currentInstance = getVulkanInstance();
     vk::PhysicalDevice physicalDevice = getPhysicalDevice(currentInstance);
     uint32_t computeQueueFamilyIndex = getComputeQueueFamilyIndex(physicalDevice);
     vk::Device device = getDevice(computeQueueFamilyIndex, physicalDevice);
 
+    // Start doing stuff that are related to buffers.
+    // map<string, vector<pair<vk::Buffer, vk::DeviceMemory>>> buffers =
+    //    getBuffers(device, physicalDevice, computeQueueFamilyIndex);
     map<string, vector<pair<vk::Buffer, vk::DeviceMemory>>> buffers =
-        getBuffers(device, physicalDevice, computeQueueFamilyIndex);
+        getMatmulBuffers(device, physicalDevice, computeQueueFamilyIndex, a, b, dim, m, k, n);
+    // TODO: Stop hardcoding stuff and implement the logic.
+
+    vector<pair<vk::Buffer, int>> tempBuffers;
+    tempBuffers.push_back(make_pair(buffers[0], m * k));
+    tempBuffers.push_back(make_pair(buffers[1], k * n));
+    tempBuffers.push_back(make_pair(buffers[2], 3));
+    tempBuffers.push_back(make_pair(buffers[3], m * n));
 
     PipelineComponents pComponents;
     vk::ShaderModule shaderModule = getPipeline(device, pComponents);
     auto descriptorObjects = getDescriptors(
-        device, pComponents.descriptorSetLayout, buffers["input"][0].first,
-        buffers["output"][0].first, NUM);
+        device, pComponents.descriptorSetLayout, tempBuffers);
 
     printf("Starting execution.\n");
     auto start = chrono::system_clock::now();
@@ -602,10 +641,14 @@ int main(int argc, char const *argv[])
     auto elapsed_time = chrono::duration_cast<chrono::microseconds>(end - start);
     cout << "Elapsed time in microseconds: " << elapsed_time.count() << endl;
 
-    showResult(buffers["input"][0].second, buffers["output"][0].second, device);
+    showResult(buffers["output"][0].second, c, device, m * n);
 
     // Cleanup all the bunch of stuffs.
     cleanup(device, currentInstance, buffers, pComponents, shaderModule,
             descriptorObjects, cmdComponents);
+
+    free(a);
+    free(b);
+    free(c);
     return 0;
 }
