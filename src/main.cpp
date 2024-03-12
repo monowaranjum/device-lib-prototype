@@ -70,14 +70,14 @@ public:
 vk::Instance getVulkanInstance()
 {
     vk::ApplicationInfo AppInfo{
-        "VulkanCompute",   // Application Name
+        "VulkanComputeGEMM",   // Application Name
         1,                 // Application Version
         nullptr,           // Engine Name or nullptr
         0,                 // Engine Version
         VK_API_VERSION_1_1 // Vulkan API version
     };
 
-    const std::vector<const char *> Layers = {"VK_LAYER_KHRONOS_validation"};
+    const std::vector<const char *> Layers = {};
     vk::InstanceCreateInfo InstanceCreateInfo(vk::InstanceCreateFlags(), // Flags
                                               &AppInfo,                  // Application Info
                                               Layers.size(),             // Layers count
@@ -417,7 +417,7 @@ vk::ShaderModule getPipeline(vk::Device &device,
                              PipelineComponents &pipelineComponents)
 {
     std::vector<char> shaderContents;
-    if (std::ifstream shaderFile{"../shaders/naive_matmul.spv",
+    if (std::ifstream shaderFile{"shaders/naive_matmul.spv",
                                  std::ios::binary | std::ios::ate})
     {
         const size_t fileSize =
@@ -604,16 +604,16 @@ void showResult(vk::DeviceMemory &outBufferMemory, float *c, vk::Device &device,
         }
     }
 
-    printf("Mismatch check complete. Count: %d , Total %d , error: %lld\n", count, k, (float)(count/k));
+    printf("Mismatch check complete. Count: %d , Total %d , error: %lf\n", count, k, (float)((float)count/(float)k));
     device.unmapMemory(outBufferMemory);
 }
 
 int main(int argc, char const *argv[])
 {
 
-    int m = 128;
-    int k = 128;
-    int n = 128;
+    int m = 8;
+    int k = 8;
+    int n = 8;
 
     float *a = (float *)malloc(m * k * sizeof(float));
     float *b = (float *)malloc(k * n * sizeof(float));
