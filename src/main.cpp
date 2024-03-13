@@ -565,7 +565,7 @@ CommandComponents getCommandComponents(vk::Device &device,
         0,                                 // First descriptor set
         {descriptorset},                   // List of descriptor sets
         {});                               // Dynamic offsets
-    cmdBuffer.dispatch((M * N) / THREAD_PER_WG, 1, 1);
+    cmdBuffer.dispatch((M/16)+1, (N/16)+1, 1);
     cmdBuffer.end();
 
     // Fence and submit
@@ -611,9 +611,9 @@ void showResult(vk::DeviceMemory &outBufferMemory, float *c, vk::Device &device,
 int main(int argc, char const *argv[])
 {
 
-    int m = 8;
-    int k = 8;
-    int n = 8;
+    int m = 144;
+    int k = 16;
+    int n = 127;
 
     float *a = (float *)malloc(m * k * sizeof(float));
     float *b = (float *)malloc(k * n * sizeof(float));

@@ -7,9 +7,9 @@ project(
     )
 
 set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_FLAGS "-Wall -pg")
+set(CMAKE_CXX_FLAGS "-Wall")
 
-find_package(Vulkan REQUIRED FATAL_ERROR)
+# find_package(Vulkan REQUIRED FATAL_ERROR)
 
 set(SHADER_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shaders)
 set(SHADER_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders)
