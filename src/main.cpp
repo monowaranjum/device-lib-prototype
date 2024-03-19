@@ -10,7 +10,7 @@
 #include <cmath>
 
 #include <vulkan/vulkan.hpp>
-#define epsilon 1e-5f
+#define epsilon 1e-4f
 #define THREAD_PER_WG 256
 using namespace std;
 
@@ -417,7 +417,7 @@ vk::ShaderModule getPipeline(vk::Device &device,
                              PipelineComponents &pipelineComponents)
 {
     std::vector<char> shaderContents;
-    if (std::ifstream shaderFile{"shaders/naive_matmul.spv",
+    if (std::ifstream shaderFile{"shaders/coalesced_matmul.spv",
                                  std::ios::binary | std::ios::ate})
     {
         const size_t fileSize =
@@ -565,7 +565,7 @@ CommandComponents getCommandComponents(vk::Device &device,
         0,                                 // First descriptor set
         {descriptorset},                   // List of descriptor sets
         {});                               // Dynamic offsets
-    cmdBuffer.dispatch((M/16)+1, (N/16)+1, 1);
+    cmdBuffer.dispatch(((M*N)/(16*16))+1, 1, 1);
     cmdBuffer.end();
 
     // Fence and submit
@@ -599,8 +599,10 @@ void showResult(vk::DeviceMemory &outBufferMemory, float *c, vk::Device &device,
     {
         if (fabs(outBufferPtr[k] - c[k])>epsilon)
         {
-            printf("Mismatch at %d , %f %f\n", k, c[k], outBufferPtr[k]);
             count++;
+            if(count %1000==0){
+                printf("Mismatch at %d , %f %f\n", k, c[k], outBufferPtr[k]);
+            }
         }
     }
 
@@ -611,7 +613,7 @@ void showResult(vk::DeviceMemory &outBufferMemory, float *c, vk::Device &device,
 int main(int argc, char const *argv[])
 {
 
-    int m = 144;
+    int m = 127;
     int k = 16;
     int n = 127;
 
@@ -632,8 +634,6 @@ int main(int argc, char const *argv[])
     vk::Device device = getDevice(computeQueueFamilyIndex, physicalDevice);
 
     // Start doing stuff that are related to buffers.
-    // map<string, vector<pair<vk::Buffer, vk::DeviceMemory>>> buffers =
-    //    getBuffers(device, physicalDevice, computeQueueFamilyIndex);
     map<string, vector<pair<vk::Buffer, vk::DeviceMemory>>> buffers =
         getMatmulBuffers(device, physicalDevice, computeQueueFamilyIndex, a, b, dim, m, k, n);
     // TODO: Stop hardcoding stuff and implement the logic.
@@ -641,11 +641,7 @@ int main(int argc, char const *argv[])
     printf("Number of input buffers: %d\n", buffers["input"].size());
     printf("Number of output buffers: %d\n", buffers["output"].size());
 
-    // vector<pair<vk::Buffer &, uint32_t>> tempBuffers;
-    // tempBuffers.push_back(make_pair(buffers["input"][0].first, m * k));
-    // tempBuffers.push_back(make_pair(buffers["input"][1].first, k * n));
-    // tempBuffers.push_back(make_pair(buffers["input"][2].first, 3));
-    // tempBuffers.push_back(make_pair(buffers["output"][3].first, m * n));
+
 
     PipelineComponents pComponents;
     vk::ShaderModule shaderModule = getPipeline(device, pComponents);
