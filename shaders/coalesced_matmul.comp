@@ -11,8 +11,8 @@ void main(){
     uint M = dim[0];
     uint K = dim[1];
     uint N = dim[2];
-    uint x = 0;
-    uint y = 0;
+    uint x = (gl_WorkGroupID.x * 256 + gl_LocalInvocationID.x)/N;
+    uint y = (gl_WorkGroupID.x * 256 + gl_LocalInvocationID.x)%N;
 
     if(x< M && y< N){
         float acc = 0.0;
@@ -21,12 +21,8 @@ void main(){
         }
         matOut[x*N+y] = acc;
     }
-
 }
 
 
-void map(inout uint x, inout uint y){
-    x = gl_WorkGroupID.x * 256 + 
-}
 
 

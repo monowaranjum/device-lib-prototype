@@ -566,6 +566,7 @@ CommandComponents getCommandComponents(vk::Device &device,
         {descriptorset},                   // List of descriptor sets
         {});                               // Dynamic offsets
     cmdBuffer.dispatch(((M*N)/(16*16))+1, 1, 1);
+    // cmdBuffer.dispatch((M/16)+1, (N/16)+1, 1);
     cmdBuffer.end();
 
     // Fence and submit
