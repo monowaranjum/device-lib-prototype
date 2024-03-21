@@ -1,6 +1,6 @@
 #version 430
-#define TILE_SIZE 16
-layout(local_size_x = 256 , local_size_y = 1, local_size_z = 1) in;
+#define TILE_SIZE 32
+layout(local_size_x = TILE_SIZE , local_size_y = TILE_SIZE, local_size_z = 1) in;
 
 layout(std430, binding = 0) readonly buffer lay0 { float matA[]; };
 layout(std430, binding = 1) readonly buffer lay1 { float matB[]; };
@@ -12,45 +12,36 @@ shared float tileA[TILE_SIZE][TILE_SIZE];
 shared float tileB[TILE_SIZE][TILE_SIZE];
 
 void main() {
-  uvec3 numWorkGroups = gl_NumWorkGroups; 
+ 
   uvec3 workGroupId = gl_WorkGroupID; // This one is the id based on vkCmdDispatch
-  uvec3 localInvocationId = gl_LocalInvocationID; // This one is basically thread id based on local layout
-  uvec3 wgSize = gl_WorkGroupSize;
-  uvec3 globalInvocationId = gl_GlobalInvocationID; // I dont know -_- 
-  uint localInvocationIndex = gl_LocalInvocationIndex; // Depends on the previous variable
-
-  uint load_tileRow = localInvocationId.x / TILE_SIZE ; // Local workgroup size is 1D
-  uint load_tileColumn = localInvocationId.x % TILE_SIZE ; // Local workgroup size is 1D
-
-  uint vRow_A = (dim[0]/TILE_SIZE); // Finding out number of tiles available on the row dimension.
-  uint vColumn_A = (dim[1]/TILE_SIZE); // Finding out number of tiles available on the column dimension.
-
-  uint vRow_B = (dim[2] / TILE_SIZE); 
-  uint vColumn_B = (dim[3] / TILE_SIZE); 
+  uvec3 localInvocationId = gl_LocalInvocationID; // This one is basically thread id based on local layout (32, 32, 1)
   
-  uint x_tile_A = workGroupId.x / vColumn_A; 
-  uint y_tile_A = workGroupId.x % vColumn_A;
+  uint M = dim[0]; 
+  uint K = dim[1];
+  uint N = dim[2];
 
-  uint x_tile_B = workGroupId.x / vColumn_B;
-  uint y_tile_B = workGroupId.x % vColumn_B;
+  uint tile_count = K/TILE_SIZE;
 
-  uint location_A = (x_tile_A * TILE_SIZE + load_tileRow) * dim[1] + (y_tile_A * TILE_SIZE) + load_tileColumn;
-  uint location_B = (x_tile_B * TILE_SIZE + load_tileRow) * dim[3] + (y_tile_B * TILE_SIZE) + load_tileColumn;
+  uint A_row_start = workGroupId.x * TILE_SIZE ; 
+  uint B_col_start = workGroupId.y * TILE_SIZE ;
+  float tmp = 0.0;
+  
+  for(int blkIdx = 0 ; blkIdx < tile_count; blkIdx++ ){
+    
+    tileA[localInvocationId.x][localInvocationId.y] =
+        matA[A_row_start * K + localInvocationId.x * K + blkIdx* TILE_SIZE + localInvocationId.y];
+    
+    tileB[localInvocationId.x][localInvocationId.y] =
+        matB[ blkIdx * TILE_SIZE * N +  B_col_start + localInvocationId.x * N + localInvocationId.y];
 
-  if(location_A >= dim[0]*dim[1] || location_B >= dim[2]*dim[3]){
-    return;
+    barrier();
+
+    for(int dotIdx = 0; dotIdx < TILE_SIZE; dotIdx++ ){
+      tmp += tileA[localInvocationId.x][dotIdx] * tileB[dotIdx][localInvocationId.y];
+    }
+
+    barrier();
+
   }
-
-  tileA[load_tileRow][load_tileColumn] = matA[location_A];
-  tileB[load_tileRow][load_tileColumn] = matB[location_B];
-
-  barrier(); 
-
-  // Do the matmul here
-  float acc = 0.0;
-  for(uint k = 0 ; k<TILE_SIZE; k++){
-    acc += tileA[load_tileRow][k]*tileB[k][load_tileColumn];
-  }
-  barrier();
-
+  matOut[ workGroupId.x * TILE_SIZE * N + workGroupId.y * TILE_SIZE + localInvocationId.x * N + localInvocationId.y ] = tmp;
 }

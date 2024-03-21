@@ -10,10 +10,12 @@
 #include <cmath>
 
 #include <vulkan/vulkan.hpp>
-#define epsilon 1e-4f
-#define THREAD_PER_WG 256
+#define epsilon 1e-3f
+#define LOCAL_X 32
+#define LOCAL_Y 32
 using namespace std;
 
+bool isPowerOfTwo(uint32_t n) { return n && !(n & (n - 1)); }
 
 void matMulGen(float *a, float *b, float *c, int M, int K, int N)
 {
@@ -417,7 +419,7 @@ vk::ShaderModule getPipeline(vk::Device &device,
                              PipelineComponents &pipelineComponents)
 {
     std::vector<char> shaderContents;
-    if (std::ifstream shaderFile{"shaders/coalesced_matmul.spv",
+    if (std::ifstream shaderFile{"shaders/tiled_matmul.spv",
                                  std::ios::binary | std::ios::ate})
     {
         const size_t fileSize =
@@ -565,8 +567,20 @@ CommandComponents getCommandComponents(vk::Device &device,
         0,                                 // First descriptor set
         {descriptorset},                   // List of descriptor sets
         {});                               // Dynamic offsets
-    cmdBuffer.dispatch(((M*N)/(16*16))+1, 1, 1);
+    // cmdBuffer.dispatch(((M*N)/(16*16))+1, 1, 1);
     // cmdBuffer.dispatch((M/16)+1, (N/16)+1, 1);
+    if(isPowerOfTwo(M) && isPowerOfTwo(N)){
+      cmdBuffer.dispatch((M / LOCAL_X), (N / LOCAL_Y), 1);
+    }
+    else if(isPowerOfTwo(M) && !isPowerOfTwo(N)){
+      cmdBuffer.dispatch((M / LOCAL_X), (N / LOCAL_Y) + 1, 1);
+    }
+    else if(!isPowerOfTwo(M) && isPowerOfTwo(N)){
+      cmdBuffer.dispatch((M / LOCAL_X) + 1, (N / LOCAL_Y), 1);
+    }
+    else{
+      cmdBuffer.dispatch((M / LOCAL_X) + 1, (N / LOCAL_Y) + 1, 1);
+    }
     cmdBuffer.end();
 
     // Fence and submit
@@ -600,10 +614,11 @@ void showResult(vk::DeviceMemory &outBufferMemory, float *c, vk::Device &device,
     {
         if (fabs(outBufferPtr[k] - c[k])>epsilon)
         {
-            count++;
+            
             if(count %1000==0){
                 printf("Mismatch at %d , %f %f\n", k, c[k], outBufferPtr[k]);
             }
+            count++;
         }
     }
 
@@ -614,9 +629,9 @@ void showResult(vk::DeviceMemory &outBufferMemory, float *c, vk::Device &device,
 int main(int argc, char const *argv[])
 {
 
-    int m = 127;
-    int k = 16;
-    int n = 127;
+    uint32_t m = 2048;
+    uint32_t k = 1024;
+    uint32_t n = 2048;
 
     float *a = (float *)malloc(m * k * sizeof(float));
     float *b = (float *)malloc(k * n * sizeof(float));
