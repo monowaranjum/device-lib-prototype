@@ -3,3 +3,4 @@ CMakeLists.txt
 src/CMakeLists.txt
 shaders/CMakeLists.txt
 *.log
+.vscode/
