@@ -8,6 +8,8 @@
 #include <chrono>
 #include <random>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 
 #include <vulkan/vulkan.hpp>
 #define epsilon 1e-3f
@@ -416,10 +418,11 @@ void cleanup(vk::Device &device, vk::Instance &instance,
 }
 
 vk::ShaderModule getPipeline(vk::Device &device,
-                             PipelineComponents &pipelineComponents)
+                             PipelineComponents &pipelineComponents, string shader_name)
 {
     std::vector<char> shaderContents;
-    if (std::ifstream shaderFile{"shaders/tiled_matmul.spv",
+    string file_name = "shaders/"+shader_name;
+    if (std::ifstream shaderFile{ file_name.c_str(),
                                  std::ios::binary | std::ios::ate})
     {
         const size_t fileSize =
@@ -626,17 +629,21 @@ void showResult(vk::DeviceMemory &outBufferMemory, float *c, vk::Device &device,
     device.unmapMemory(outBufferMemory);
 }
 
-int main(int argc, char const *argv[])
+int main(int argc, char *argv[])
 {
 
-    uint32_t m = 2048;
-    uint32_t k = 1024;
-    uint32_t n = 2048;
+    string shader_name(argv[1]);
 
+    uint32_t m = static_cast<uint32_t>(stoi(argv[2])) ;
+    uint32_t k = static_cast<uint32_t>(stoi(argv[3]));
+    uint32_t n = static_cast<uint32_t>(stoi(argv[4]));
+    int checkResultFlag = strcmp(argv[5], "-rcheck");
+    
     float *a = (float *)malloc(m * k * sizeof(float));
     float *b = (float *)malloc(k * n * sizeof(float));
     uint32_t dim[3] = {m, k, n};
     float *c = (float *)malloc(m * n * sizeof(float));
+
 
     // Ground truth generation.
     matMulGen(a, b, c, m, k, n);
@@ -660,7 +667,7 @@ int main(int argc, char const *argv[])
 
 
     PipelineComponents pComponents;
-    vk::ShaderModule shaderModule = getPipeline(device, pComponents);
+    vk::ShaderModule shaderModule = getPipeline(device, pComponents, shader_name);
     auto descriptorObjects = getDescriptors(
         device, pComponents.descriptorSetLayout, buffers["input"], buffers["output"], m, k, n);
 
@@ -672,7 +679,9 @@ int main(int argc, char const *argv[])
     auto elapsed_time = chrono::duration_cast<chrono::microseconds>(end - start);
     cout << "Elapsed time in microseconds: " << elapsed_time.count() << endl;
 
-    showResult(buffers["output"][0].second, c, device, m * n);
+    if(!checkResultFlag){
+        showResult(buffers["output"][0].second, c, device, m * n);
+    }
 
     // Cleanup all the bunch of stuffs.
     cleanup(device, currentInstance, buffers, pComponents, shaderModule,
