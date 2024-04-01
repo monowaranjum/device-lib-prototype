@@ -26,7 +26,7 @@ void main() {
   uint B_col_start = workGroupId.y * TILE_SIZE ;
   float tmp = 0.0;
   
-  for(int blkIdx = 0 ; blkIdx < tile_count; blkIdx++ ){
+  for(int blkIdx = 0 ; blkIdx < tile_count; blkIdx++ ){ // I mean this terminating condition is wrong and wrtten for only power of twos. TODO: FIX IT
     
     tileA[localInvocationId.x][localInvocationId.y] =
         matA[A_row_start * K + localInvocationId.x * K + blkIdx* TILE_SIZE + localInvocationId.y];

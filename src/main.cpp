@@ -19,7 +19,7 @@ using namespace std;
 
 bool isPowerOfTwo(uint32_t n) { return n && !(n & (n - 1)); }
 
-void matMulGen(float *a, float *b, float *c, int M, int K, int N)
+void matMulGen(float *a, float *b, float *c, int M, int K, int N, bool compute = false)
 {
     random_device rd;
     mt19937 e2(rd());
@@ -39,16 +39,19 @@ void matMulGen(float *a, float *b, float *c, int M, int K, int N)
 
     // Do the actual Matmul
 
-    for (int i = 0; i < M; i++)
+    if (compute)
     {
-        for (int j = 0; j < N; j++)
+        for (int i = 0; i < M; i++)
         {
-            float temp = 0.0;
-            for (int k = 0; k < K; k++)
+            for (int j = 0; j < N; j++)
             {
-                temp += a[i * K + k] * b[k * N + j];
+                float temp = 0.0;
+                for (int k = 0; k < K; k++)
+                {
+                    temp += a[i * K + k] * b[k * N + j];
+                }
+                c[i * N + j] = temp;
             }
-            c[i * N + j] = temp;
         }
     }
 }
@@ -74,11 +77,11 @@ public:
 vk::Instance getVulkanInstance()
 {
     vk::ApplicationInfo AppInfo{
-        "VulkanComputeGEMM",   // Application Name
-        1,                 // Application Version
-        nullptr,           // Engine Name or nullptr
-        0,                 // Engine Version
-        VK_API_VERSION_1_1 // Vulkan API version
+        "VulkanComputeGEMM", // Application Name
+        1,                   // Application Version
+        nullptr,             // Engine Name or nullptr
+        0,                   // Engine Version
+        VK_API_VERSION_1_1   // Vulkan API version
     };
 
     const std::vector<const char *> Layers = {};
@@ -421,8 +424,8 @@ vk::ShaderModule getPipeline(vk::Device &device,
                              PipelineComponents &pipelineComponents, string shader_name)
 {
     std::vector<char> shaderContents;
-    string file_name = "shaders/"+shader_name;
-    if (std::ifstream shaderFile{ file_name.c_str(),
+    string file_name = "shaders/" + shader_name;
+    if (std::ifstream shaderFile{file_name.c_str(),
                                  std::ios::binary | std::ios::ate})
     {
         const size_t fileSize =
@@ -432,7 +435,8 @@ vk::ShaderModule getPipeline(vk::Device &device,
         shaderContents.resize(fileSize, '\0');
         shaderFile.read(shaderContents.data(), fileSize);
     }
-    else{
+    else
+    {
         printf("Shader file not found or unreadable.\n");
     }
 
@@ -492,53 +496,54 @@ vk::ShaderModule getPipeline(vk::Device &device,
 pair<vk::DescriptorPool, vk::DescriptorSet>
 getDescriptors(vk::Device &device, vk::DescriptorSetLayout &descriptorSetLayout,
                vector<pair<vk::Buffer, vk::DeviceMemory>> &inBuffers,
-               vector<pair<vk::Buffer, vk::DeviceMemory>> &outBuffers, int m, int k, int n) {
-  // Descriptor sets must be allocated in a vk::DescriptorPool, so we need to
-  // create one first
-  vk::DescriptorPoolSize descriptorPoolSize(vk::DescriptorType::eStorageBuffer,
-                                            4); // 4 storage buffers for matmul
-  vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo(
-      vk::DescriptorPoolCreateFlags(), 1, descriptorPoolSize);
-  vk::DescriptorPool descriptorPool =
-      device.createDescriptorPool(descriptorPoolCreateInfo);
+               vector<pair<vk::Buffer, vk::DeviceMemory>> &outBuffers, int m, int k, int n)
+{
+    // Descriptor sets must be allocated in a vk::DescriptorPool, so we need to
+    // create one first
+    vk::DescriptorPoolSize descriptorPoolSize(vk::DescriptorType::eStorageBuffer,
+                                              4); // 4 storage buffers for matmul
+    vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo(
+        vk::DescriptorPoolCreateFlags(), 1, descriptorPoolSize);
+    vk::DescriptorPool descriptorPool =
+        device.createDescriptorPool(descriptorPoolCreateInfo);
 
-  // Allocate descriptor sets, update them to use buffers:
-  vk::DescriptorSetAllocateInfo descriptorSetAllocInfo(descriptorPool, 1,
-                                                       &descriptorSetLayout);
-  const std::vector<vk::DescriptorSet> descriptorSets =
-      device.allocateDescriptorSets(descriptorSetAllocInfo);
-  vk::DescriptorSet descriptorSet = descriptorSets.front();
+    // Allocate descriptor sets, update them to use buffers:
+    vk::DescriptorSetAllocateInfo descriptorSetAllocInfo(descriptorPool, 1,
+                                                         &descriptorSetLayout);
+    const std::vector<vk::DescriptorSet> descriptorSets =
+        device.allocateDescriptorSets(descriptorSetAllocInfo);
+    vk::DescriptorSet descriptorSet = descriptorSets.front();
 
-  // std::vector<vk::WriteDescriptorSet> writeDescriptorSets;
-  // // Important: should match the buffer sequence and layout in the compute
-  // shader. uint32_t id = 0; for (auto &elem : buffers)
-  // {
-  //     vk::DescriptorBufferInfo bufferInfo(elem.first, 0, elem.second *
-  //     sizeof(float)); writeDescriptorSets.push_back({descriptorSet, id, 0, 1,
-  //     vk::DescriptorType::eStorageBuffer, nullptr, &bufferInfo}); id++;
-  // }
+    // std::vector<vk::WriteDescriptorSet> writeDescriptorSets;
+    // // Important: should match the buffer sequence and layout in the compute
+    // shader. uint32_t id = 0; for (auto &elem : buffers)
+    // {
+    //     vk::DescriptorBufferInfo bufferInfo(elem.first, 0, elem.second *
+    //     sizeof(float)); writeDescriptorSets.push_back({descriptorSet, id, 0, 1,
+    //     vk::DescriptorType::eStorageBuffer, nullptr, &bufferInfo}); id++;
+    // }
 
-  vk::DescriptorBufferInfo inBuffer_A_Info(inBuffers[0].first, 0,
-                                        m*k * sizeof(float));
-  vk::DescriptorBufferInfo inBuffer_B_Info(inBuffers[1].first, 0,
-                                           k*n * sizeof(float));
-  vk::DescriptorBufferInfo inBuffer_dim_Info(inBuffers[2].first, 0,
-                                           3 * sizeof(uint32_t));
-  vk::DescriptorBufferInfo outBuffer_C_Info(outBuffers[0].first, 0,
-                                         m*n * sizeof(float));
+    vk::DescriptorBufferInfo inBuffer_A_Info(inBuffers[0].first, 0,
+                                             m * k * sizeof(float));
+    vk::DescriptorBufferInfo inBuffer_B_Info(inBuffers[1].first, 0,
+                                             k * n * sizeof(float));
+    vk::DescriptorBufferInfo inBuffer_dim_Info(inBuffers[2].first, 0,
+                                               3 * sizeof(uint32_t));
+    vk::DescriptorBufferInfo outBuffer_C_Info(outBuffers[0].first, 0,
+                                              m * n * sizeof(float));
 
-  const std::vector<vk::WriteDescriptorSet> writeDescriptorSets = {
-      {descriptorSet, 0, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
-       &inBuffer_A_Info},
-      {descriptorSet, 1, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
-       &inBuffer_B_Info},
-      {descriptorSet, 2, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
-       &inBuffer_dim_Info},
-      {descriptorSet, 3, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
-       &outBuffer_C_Info},
-  };
-  device.updateDescriptorSets(writeDescriptorSets, {});
-  return make_pair(descriptorPool, descriptorSet);
+    const std::vector<vk::WriteDescriptorSet> writeDescriptorSets = {
+        {descriptorSet, 0, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
+         &inBuffer_A_Info},
+        {descriptorSet, 1, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
+         &inBuffer_B_Info},
+        {descriptorSet, 2, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
+         &inBuffer_dim_Info},
+        {descriptorSet, 3, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
+         &outBuffer_C_Info},
+    };
+    device.updateDescriptorSets(writeDescriptorSets, {});
+    return make_pair(descriptorPool, descriptorSet);
 }
 
 CommandComponents getCommandComponents(vk::Device &device,
@@ -572,17 +577,21 @@ CommandComponents getCommandComponents(vk::Device &device,
         {});                               // Dynamic offsets
     // cmdBuffer.dispatch(((M*N)/(16*16))+1, 1, 1);
     // cmdBuffer.dispatch((M/16)+1, (N/16)+1, 1);
-    if(isPowerOfTwo(M) && isPowerOfTwo(N)){
-      cmdBuffer.dispatch((M / LOCAL_X), (N / LOCAL_Y), 1);
+    if (isPowerOfTwo(M) && isPowerOfTwo(N))
+    {
+        cmdBuffer.dispatch((M / LOCAL_X), (N / LOCAL_Y), 1);
     }
-    else if(isPowerOfTwo(M) && !isPowerOfTwo(N)){
-      cmdBuffer.dispatch((M / LOCAL_X), (N / LOCAL_Y) + 1, 1);
+    else if (isPowerOfTwo(M) && !isPowerOfTwo(N))
+    {
+        cmdBuffer.dispatch((M / LOCAL_X), (N / LOCAL_Y) + 1, 1); // This one is error prone. # TODO: Fix it
     }
-    else if(!isPowerOfTwo(M) && isPowerOfTwo(N)){
-      cmdBuffer.dispatch((M / LOCAL_X) + 1, (N / LOCAL_Y), 1);
+    else if (!isPowerOfTwo(M) && isPowerOfTwo(N))
+    {
+        cmdBuffer.dispatch((M / LOCAL_X) + 1, (N / LOCAL_Y), 1);
     }
-    else{
-      cmdBuffer.dispatch((M / LOCAL_X) + 1, (N / LOCAL_Y) + 1, 1);
+    else
+    {
+        cmdBuffer.dispatch((M / LOCAL_X) + 1, (N / LOCAL_Y) + 1, 1);
     }
     cmdBuffer.end();
 
@@ -615,17 +624,18 @@ void showResult(vk::DeviceMemory &outBufferMemory, float *c, vk::Device &device,
     int k = 0;
     for (k = 0; k < size; k++)
     {
-        if (fabs(outBufferPtr[k] - c[k])>epsilon)
+        if (fabs(outBufferPtr[k] - c[k]) > epsilon)
         {
-            
-            if(count %1000==0){
+
+            if (count % 1000 == 0)
+            {
                 printf("Mismatch at %d , %f %f\n", k, c[k], outBufferPtr[k]);
             }
             count++;
         }
     }
 
-    printf("Mismatch check complete. Count: %d , Total %d , error: %lf\n", count, k, (float)((float)count/(float)k));
+    printf("Mismatch check complete. Count: %d , Total %d , error: %lf\n", count, k, (float)((float)count / (float)k));
     device.unmapMemory(outBufferMemory);
 }
 
@@ -634,21 +644,34 @@ int main(int argc, char *argv[])
 
     string shader_name(argv[1]);
 
-    uint32_t m = static_cast<uint32_t>(stoi(argv[2])) ;
+    uint32_t m = static_cast<uint32_t>(stoi(argv[2]));
     uint32_t k = static_cast<uint32_t>(stoi(argv[3]));
     uint32_t n = static_cast<uint32_t>(stoi(argv[4]));
-    int checkResultFlag = strcmp(argv[5], "-rcheck");
-    
+    int checkResultFlag = 1;
+    if (argc == 6)
+    {
+        printf("Check result flag is ON.\n");
+        checkResultFlag = strcmp(argv[5], "-rcheck");
+    }
+
     float *a = (float *)malloc(m * k * sizeof(float));
     float *b = (float *)malloc(k * n * sizeof(float));
     uint32_t dim[3] = {m, k, n};
     float *c = (float *)malloc(m * n * sizeof(float));
 
-
     // Ground truth generation.
-    matMulGen(a, b, c, m, k, n);
+    if (!checkResultFlag)
+    {
+        matMulGen(a, b, c, m, k, n, true);
+        printf("Ground truth generation complete.\n");
+    }
+    else
+    {
+        matMulGen(a, b, c, m, k, n);
+        printf("Data population complete.\n");
+    }
 
-    printf("Ground truth generation complete.\n");
+    
 
     // Create a bunch of stuff that are not related to buffer.
     vk::Instance currentInstance = getVulkanInstance();
@@ -664,8 +687,6 @@ int main(int argc, char *argv[])
     printf("Number of input buffers: %d\n", buffers["input"].size());
     printf("Number of output buffers: %d\n", buffers["output"].size());
 
-
-
     PipelineComponents pComponents;
     vk::ShaderModule shaderModule = getPipeline(device, pComponents, shader_name);
     auto descriptorObjects = getDescriptors(
@@ -679,7 +700,8 @@ int main(int argc, char *argv[])
     auto elapsed_time = chrono::duration_cast<chrono::microseconds>(end - start);
     cout << "Elapsed time in microseconds: " << elapsed_time.count() << endl;
 
-    if(!checkResultFlag){
+    if (!checkResultFlag)
+    {
         showResult(buffers["output"][0].second, c, device, m * n);
     }
 
