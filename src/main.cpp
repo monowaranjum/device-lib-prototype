@@ -13,8 +13,8 @@
 
 #include <vulkan/vulkan.hpp>
 #define epsilon 1e-3f
-#define LOCAL_X 32
-#define LOCAL_Y 32
+#define LOCAL_X 16
+#define LOCAL_Y 16
 using namespace std;
 
 bool isPowerOfTwo(uint32_t n) { return n && !(n & (n - 1)); }
@@ -108,6 +108,9 @@ vk::PhysicalDevice getPhysicalDevice(vk::Instance &instance)
     vk::PhysicalDeviceLimits deviceLimits = deviceProps.limits;
     std::cout << "Max Compute Shared Memory Size: "
               << deviceLimits.maxComputeSharedMemorySize / 1024 << " KB"
+              << std::endl;
+    std::cout << "Max Compute Shader Local Size (Max Allowable thread count): "
+              << deviceLimits.maxComputeWorkGroupInvocations
               << std::endl;
     return physicalDevice;
 }
