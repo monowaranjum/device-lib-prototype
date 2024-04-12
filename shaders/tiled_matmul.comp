@@ -1,6 +1,6 @@
 #version 430
 #define TILE_SIZE 16
-layout(local_size_x = TILE_SIZE , local_size_y = TILE_SIZE, local_size_z = 1) in;
+layout(local_size_x = TILE_SIZE, local_size_y = TILE_SIZE, local_size_z = 1) in;
 
 layout(std430, binding = 0) readonly buffer lay0 { float matA[]; };
 layout(std430, binding = 1) readonly buffer lay1 { float matB[]; };
@@ -12,36 +12,44 @@ shared float tileA[TILE_SIZE][TILE_SIZE];
 shared float tileB[TILE_SIZE][TILE_SIZE];
 
 void main() {
- 
-  uvec3 workGroupId = gl_WorkGroupID; // This one is the id based on vkCmdDispatch
-  uvec3 localInvocationId = gl_LocalInvocationID; // This one is basically thread id based on local layout (32, 32, 1)
-  
-  uint M = dim[0]; 
+
+  uvec3 workGroupId =
+      gl_WorkGroupID; // This one is the id based on vkCmdDispatch
+  uvec3 localInvocationId =
+      gl_LocalInvocationID; // This one is basically thread id based on local
+                            // layout (32, 32, 1)
+
+  uint M = dim[0];
   uint K = dim[1];
   uint N = dim[2];
 
-  uint tile_count = K/TILE_SIZE;
+  uint tile_count = K / TILE_SIZE;
 
-  uint A_row_start = workGroupId.x * TILE_SIZE ; 
-  uint B_col_start = workGroupId.y * TILE_SIZE ;
+  uint A_row_start = workGroupId.x * TILE_SIZE;
+  uint B_col_start = workGroupId.y * TILE_SIZE;
   float tmp = 0.0;
-  
-  for(int blkIdx = 0 ; blkIdx < tile_count; blkIdx++ ){ // I mean this terminating condition is wrong and wrtten for only power of twos. TODO: FIX IT
-    
+
+  for (int blkIdx = 0; blkIdx < tile_count;
+       blkIdx++) { // I mean this terminating condition is wrong and wrtten for
+                   // only power of twos. TODO: FIX IT
+
     tileA[localInvocationId.x][localInvocationId.y] =
-        matA[A_row_start * K + localInvocationId.x * K + blkIdx* TILE_SIZE + localInvocationId.y];
-    
+        matA[A_row_start * K + localInvocationId.x * K + blkIdx * TILE_SIZE +
+             localInvocationId.y];
+
     tileB[localInvocationId.x][localInvocationId.y] =
-        matB[ blkIdx * TILE_SIZE * N +  B_col_start + localInvocationId.x * N + localInvocationId.y];
+        matB[blkIdx * TILE_SIZE * N + B_col_start + localInvocationId.x * N +
+             localInvocationId.y];
 
     barrier();
 
-    for(int dotIdx = 0; dotIdx < TILE_SIZE; dotIdx++ ){
-      tmp += tileA[localInvocationId.x][dotIdx] * tileB[dotIdx][localInvocationId.y];
+    for (int dotIdx = 0; dotIdx < TILE_SIZE; dotIdx++) {
+      tmp += tileA[localInvocationId.x][dotIdx] *
+             tileB[dotIdx][localInvocationId.y];
     }
 
     barrier();
-
   }
-  matOut[ workGroupId.x * TILE_SIZE * N + workGroupId.y * TILE_SIZE + localInvocationId.x * N + localInvocationId.y ] = tmp;
+  matOut[workGroupId.x * TILE_SIZE * N + workGroupId.y * TILE_SIZE +
+         localInvocationId.x * N + localInvocationId.y] = tmp;
 }
