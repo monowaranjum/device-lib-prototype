@@ -56,17 +56,41 @@ void main() {
     float res[TILE_SIZE_Y] =
         float[TILE_SIZE_Y](0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     float cachedRowFromA[TILE_SIZE_Y];
-    cachedRowFromA[0] = tileA[x][0];
-    cachedRowFromA[1] = tileA[x][1];
-    cachedRowFromA[2] = tileA[x][2];
-    cachedRowFromA[3] = tileA[x][3];
-    cachedRowFromA[4] = tileA[x][4];
-    cachedRowFromA[5] = tileA[x][5];
-    cachedRowFromA[6] = tileA[x][6];
-    cachedRowFromA[7] = tileA[x][7];
 
-    for(int idxA = 0; idxA < TILE_SIZE_Y ; idxA ++ ){
-        // Write the inner loop
+    cachedRowFromA[0] = tileA[localThreadId.x][0];
+    cachedRowFromA[1] = tileA[localThreadId.x][1];
+    cachedRowFromA[2] = tileA[localThreadId.x][2];
+    cachedRowFromA[3] = tileA[localThreadId.x][3];
+    cachedRowFromA[4] = tileA[localThreadId.x][4];
+    cachedRowFromA[5] = tileA[localThreadId.x][5];
+    cachedRowFromA[6] = tileA[localThreadId.x][6];
+    cachedRowFromA[7] = tileA[localThreadId.x][7];
+
+    for (uint idxA = 0; idxA < TILE_SIZE_Y; idxA++) {
+      // Making explicit loop unroll
+      uint startColumnOfTileB = localThreadId.y * 8;
+      res[0] += cachedRowFromA[0] * tileB[idxA][startColumnOfTileB++];
+      res[1] += cachedRowFromA[1] * tileB[idxA][startColumnOfTileB++];
+      res[2] += cachedRowFromA[2] * tileB[idxA][startColumnOfTileB++];
+      res[3] += cachedRowFromA[3] * tileB[idxA][startColumnOfTileB++];
+      res[4] += cachedRowFromA[4] * tileB[idxA][startColumnOfTileB++];
+      res[5] += cachedRowFromA[5] * tileB[idxA][startColumnOfTileB++];
+      res[6] += cachedRowFromA[6] * tileB[idxA][startColumnOfTileB++];
+      res[7] += cachedRowFromA[7] * tileB[idxA][startColumnOfTileB++];
+    }
+
+    // write to temporary shared memory
+    for (uint k = 0; k < TILE_SIZE_Y; k++) {
+      tileC[x][y + k] += res[k];
     }
   }
+
+  // Writing back to global output
+
+  uint offset = ( workGroupId.x * TILE_SIZE_X + x ) * N + workGroupId.y * TILE_SIZE_X + y; 
+
+  for(uint i=0; i < TILE_SIZE_Y; i++){
+    matOut[offset+i] = tileC[x][y+i];
+  }
+
 }

@@ -13,8 +13,8 @@
 
 #include <vulkan/vulkan.hpp>
 #define epsilon 1e-3f
-#define LOCAL_X 16
-#define LOCAL_Y 16
+#define LOCAL_X 64
+#define LOCAL_Y 64
 using namespace std;
 
 bool isPowerOfTwo(uint32_t n) { return n && !(n & (n - 1)); }
@@ -630,10 +630,10 @@ void showResult(vk::DeviceMemory &outBufferMemory, float *c, vk::Device &device,
         if (fabs(outBufferPtr[k] - c[k]) > epsilon)
         {
 
-            if (count % 1000 == 0)
-            {
-                printf("Mismatch at %d , %f %f\n", k, c[k], outBufferPtr[k]);
-            }
+            // if (count % 1000 == 0)
+            // {
+            //     printf("Mismatch at %d , %f %f\n", k, c[k], outBufferPtr[k]);
+            // }
             count++;
         }
     }
@@ -687,8 +687,8 @@ int main(int argc, char *argv[])
         getMatmulBuffers(device, physicalDevice, computeQueueFamilyIndex, a, b, dim, m, k, n);
     // TODO: Stop hardcoding stuff and implement the logic.
 
-    printf("Number of input buffers: %d\n", buffers["input"].size());
-    printf("Number of output buffers: %d\n", buffers["output"].size());
+    printf("Number of input buffers: %lu\n", buffers["input"].size());
+    printf("Number of output buffers: %lu\n", buffers["output"].size());
 
     PipelineComponents pComponents;
     vk::ShaderModule shaderModule = getPipeline(device, pComponents, shader_name);
