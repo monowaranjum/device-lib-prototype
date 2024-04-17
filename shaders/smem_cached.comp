@@ -48,7 +48,7 @@ void main() {
              tileB[dotIdx][localInvocationId.y];
     }
 
-    barrier();
+    // barrier();
   }
   matOut[workGroupId.x * TILE_SIZE * N + workGroupId.y * TILE_SIZE +
          localInvocationId.x * N + localInvocationId.y] = tmp;
