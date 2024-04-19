@@ -14,10 +14,15 @@ void main(){
     uint M = dim[0];
     uint K = dim[1];
     uint N = dim[2];
-   
-    uint x = (gl_WorkGroupID.x * THREAD_COUNT + gl_LocalInvocationID.x)/N;
-    uint y = (gl_WorkGroupID.x * THREAD_COUNT + gl_LocalInvocationID.x)%N;
 
+    uint tilesAlongX = N/TILE_SIZE_Y;
+    uint index = gl_WorkGroupID.x * tilesAlongX + gl_WorkGroupID.y;
+   
+    // uint x = (gl_WorkGroupID.x * THREAD_COUNT + gl_LocalInvocationID.x)/N;
+    // uint y = (gl_WorkGroupID.x * THREAD_COUNT + gl_LocalInvocationID.x)%N;
+
+    uint x = (index * THREAD_COUNT + gl_LocalInvocationID.x )/N;
+    uint y = (index * THREAD_COUNT + gl_LocalInvocationID.x )%N;
     if(x< M && y< N){
         float acc = 0.0;
         for(int i=0; i<K;i++){
