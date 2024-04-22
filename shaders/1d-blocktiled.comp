@@ -1,9 +1,10 @@
 #version 430
-
-#define TILE_SIZE_X 64
-#define TILE_SIZE_Y 8
-layout(local_size_x = TILE_SIZE_X, local_size_y = TILE_SIZE_Y,
-       local_size_z = 1) in;
+#define THREAD_COUNT 512
+#define BM 64
+#define BK 8
+#define BN 64
+#define TM 8 // This should always be BM / BK
+layout(local_size_x = THREAD_COUNT, local_size_y = 1, local_size_z = 1) in;
 
 layout(std430, binding = 0) readonly buffer lay0 { float matA[]; };
 layout(std430, binding = 1) readonly buffer lay1 { float matB[]; };
@@ -11,86 +12,61 @@ layout(std430, binding = 2) readonly buffer lay2 { uint dim[]; };
 
 layout(std430, binding = 3) buffer lay3 { float matOut[]; };
 
-shared float tileA[TILE_SIZE_X][TILE_SIZE_Y]; // 64 * 8 * 4B = 2KB
-shared float tileB[TILE_SIZE_Y][TILE_SIZE_X]; // 8 * 64 * 4B = 2KB
-shared float tileC[TILE_SIZE_X][TILE_SIZE_X]; // 64 * 64 * 4B = 16 KB ( Total 20
+shared float tileA[BM][BK]; // 64 * 8 * 4B = 2KB
+shared float tileB[BK][BN]; // 8 * 64 * 4B = 2KB
+shared float tileC[BM][BN]; // 64 * 64 * 4B = 16 KB ( Total 20
                                               // KB , SMEM Capacity 32 KB)
 
 void main() {
 
-  uvec3 workGroupId =
+  uvec3 blockIdx =
       gl_WorkGroupID; // This one is the id based on seq during vkCmdDispatch
-  uvec3 localThreadId = gl_LocalInvocationID; // This one is basically thread id
-                                              // based on local layout
+  uvec3 threadIdx = gl_LocalInvocationID; // This one is basically thread id
+                                          // based on local layout
 
   uint M = dim[0];
   uint K = dim[1];
   uint N = dim[2];
 
-  uint blockCount = K / TILE_SIZE_Y;
-  uint A_row_start = workGroupId.x * TILE_SIZE_X;
-  uint B_col_start = workGroupId.y * TILE_SIZE_X;
-  // Initialize the shared out block to 0
+  uint tRow = blockIdx.x;
+  uint tCol = blockIdx.y;
 
-  uint x = ((localThreadId.x * TILE_SIZE_Y + localThreadId.y) * TILE_SIZE_Y) /
-           TILE_SIZE_X;
-  uint y = ((localThreadId.x * TILE_SIZE_Y + localThreadId.y) * TILE_SIZE_Y) %
-           TILE_SIZE_X;
+  uint threadRow = threadIdx.x / BN;
+  uint threadCol = threadIdx.x % BN;
 
-  for (int k = 0; k < TILE_SIZE_Y; k++) {
-    tileC[x][y + k] = 0.0;
-  }
+  uint a = tRow * BM * K;
+  uint b = tCol * BN;
+  uint c = tRow * BM * N + tCol * BN;
 
-  for (int blkIdx = 0; blkIdx < blockCount; ++blkIdx) {
-    // Populate the tileA and TileB
-    tileA[localThreadId.x][localThreadId.y] =
-        matA[A_row_start * K + localThreadId.x * K + blkIdx * TILE_SIZE_Y +
-             localThreadId.y];
+  uint innerRowA = threadIdx.x / BK;
+  uint innerColA = threadIdx.x % BK;
 
-    tileB[localThreadId.y][localThreadId.x] =
-        matB[blkIdx * TILE_SIZE_Y * N + B_col_start + localThreadId.x * N +
-             localThreadId.y];
+  uint innerRowB = threadIdx.x / BN;
+  uint innerColB = threadIdx.x % BN;
 
+  float partialRes[TM] =
+      float[TM](0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+
+  for(uint blkIdx = 0 ; blkIdx < K ; blkIdx += BK ){
+    tileA[innerRowA][innerColA] = matA[a + innerRowA * K + innerColA ];
+    tileB[innerRowB][innerColB] = matB[b + innerRowB * N + innerColB ];
     barrier();
 
-    float res[TILE_SIZE_Y] =
-        float[TILE_SIZE_Y](0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-    float cachedRowFromA[TILE_SIZE_Y];
+    a += BK;
+    b += BK * N ;
 
-    cachedRowFromA[0] = tileA[localThreadId.x][0];
-    cachedRowFromA[1] = tileA[localThreadId.x][1];
-    cachedRowFromA[2] = tileA[localThreadId.x][2];
-    cachedRowFromA[3] = tileA[localThreadId.x][3];
-    cachedRowFromA[4] = tileA[localThreadId.x][4];
-    cachedRowFromA[5] = tileA[localThreadId.x][5];
-    cachedRowFromA[6] = tileA[localThreadId.x][6];
-    cachedRowFromA[7] = tileA[localThreadId.x][7];
+    for(uint dotIdx = 0 ; dotIdx < BK ; dotIdx++){
+      float tmpB = tileB[dotIdx][threadCol]; // Whichever column of tileB u are in, you will be writing results in that corner. 
 
-    for (uint idxA = 0; idxA < TILE_SIZE_Y; idxA++) {
-      // Making explicit loop unroll
-      uint startColumnOfTileB = localThreadId.y * 8;
-      res[0] += cachedRowFromA[0] * tileB[idxA][startColumnOfTileB++];
-      res[1] += cachedRowFromA[1] * tileB[idxA][startColumnOfTileB++];
-      res[2] += cachedRowFromA[2] * tileB[idxA][startColumnOfTileB++];
-      res[3] += cachedRowFromA[3] * tileB[idxA][startColumnOfTileB++];
-      res[4] += cachedRowFromA[4] * tileB[idxA][startColumnOfTileB++];
-      res[5] += cachedRowFromA[5] * tileB[idxA][startColumnOfTileB++];
-      res[6] += cachedRowFromA[6] * tileB[idxA][startColumnOfTileB++];
-      res[7] += cachedRowFromA[7] * tileB[idxA][startColumnOfTileB++];
+      for(uint resIdx = 0 ; resIdx<TM; resIdx++){
+        partialRes[resIdx] += tileA[(threadRow * TM + resIdx)] [dotIdx] * tmpB;
+      }
     }
-
-    // write to temporary shared memory
-    for (uint k = 0; k < TILE_SIZE_Y; k++) {
-      tileC[x][y + k] += res[k];
-    }
+    barrier();
   }
 
-  // Writing back to global output
-
-  uint offset = ( workGroupId.x * TILE_SIZE_X + x ) * N + workGroupId.y * TILE_SIZE_X + y; 
-
-  for(uint i=0; i < TILE_SIZE_Y; i++){
-    matOut[offset+i] = tileC[x][y+i];
+  for (uint resIdx = 0; resIdx < TM; resIdx++) {
+    matOut[c + (threadRow * TM + resIdx) * N + threadCol] =
+        partialRes[resIdx];
   }
-
 }

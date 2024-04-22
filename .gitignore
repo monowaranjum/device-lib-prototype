@@ -8,3 +8,4 @@ shaders/CMakeLists.txt
 *.log
 .vscode/
 *.sh
+*.out

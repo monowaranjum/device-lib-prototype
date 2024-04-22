@@ -340,7 +340,8 @@ vk::ShaderModule getPipeline(vk::Device &device,
                              PipelineComponents &pipelineComponents,
                              string shader_name) {
   std::vector<char> shaderContents;
-  string file_name = "shaders/" + shader_name;
+  string file_name =
+      "/home/rashik/Documents/compute_shader_exp/build/shaders/" + shader_name;
   if (std::ifstream shaderFile{file_name.c_str(),
                                std::ios::binary | std::ios::ate}) {
     const size_t fileSize =
@@ -460,8 +461,8 @@ void conditionalDispatch(vk::CommandBuffer &cmdBuffer, int M, int N,
     printf("NAIVE: Dispatch size (%d, %d, 1)\nTotal WG count %d\n", m, n, m*n);
     break;
   case MEM_COALESCED:
-    cmdBuffer.dispatch(m*n, 1, 1);
-    printf("MEM_COALESCED: Dispatch size (%d, 1 , 1)\nTotal WG count: %d\n", m * n, m*n );
+    cmdBuffer.dispatch(m, n, 1);
+    printf("MEM_COALESCED: Dispatch size (%d, %d , 1)\nTotal WG count: %d\n", m, n, m*n );
     break;
   case SMEM_CACHE:
     m = isPowerOfTwo(M) ? (M / 16) : (M / 16) + 1;
@@ -470,6 +471,8 @@ void conditionalDispatch(vk::CommandBuffer &cmdBuffer, int M, int N,
     printf("SMEM_CACHE: Dispatch size (%d, %d, 1)\nTotal WG count %d\n", m, n, m*n);
     break;
   case TILE_1D:
+    m = isPowerOfTwo(M) ? (M / 64) : (M / 64) + 1;
+    n = isPowerOfTwo(N) ? (N / 64) : (N / 64) + 1;
     cmdBuffer.dispatch(m, n, 1);
     printf("TILE_1D: Dispatch size (%d, %d, 1)\nTotal WG count %d\n", m, n, m*n);
     break;
@@ -542,7 +545,7 @@ void execute(CommandComponents &cmdComponents, vk::Device &device) {
 }
 
 void showResult(vk::DeviceMemory &outBufferMemory, float *c, vk::Device &device,
-                int size) {
+                int size, int debugFlag) {
 
   float *outBufferPtr = static_cast<float *>(
       device.mapMemory(outBufferMemory, 0, size * sizeof(float)));
@@ -551,6 +554,9 @@ void showResult(vk::DeviceMemory &outBufferMemory, float *c, vk::Device &device,
   for (k = 0; k < size; k++) {
     if (fabs(outBufferPtr[k] - c[k]) > epsilon) {
       count++;
+    }
+    else if (debugFlag == 0) {
+      printf("At position %d Expected: %f , Got %f\n",k,  c[k], outBufferPtr[k]);
     }
   }
 
@@ -574,9 +580,14 @@ int main(int argc, char *argv[]) {
   uint32_t n = static_cast<uint32_t>(stoi(argv[4]));
 
   int checkResultFlag = 1;
-  if (argc == 6) {
+  if (argc >= 6) {
     checkResultFlag = strcmp(argv[5], "-rcheck");
-    printf("Check result flag is ON.\n");
+    printf("Check result flag is ON (%d).\n", checkResultFlag);
+  }
+  int printLog = 1;
+  if(argc >= 7){
+    printLog = strcmp(argv[6], "-printLog");
+    printf("Printing Log flag is ON (%d).\n", printLog);
   }
 
   float *a = (float *)malloc(m * k * sizeof(float));
@@ -625,7 +636,7 @@ int main(int argc, char *argv[]) {
   cout << "Elapsed time in microseconds: " << elapsed_time.count() << endl;
 
   if (!checkResultFlag) {
-    showResult(buffers["output"][0].second, c, device, m * n);
+    showResult(buffers["output"][0].second, c, device, m * n, printLog);
   }
 
   // Cleanup all the bunch of stuffs.
