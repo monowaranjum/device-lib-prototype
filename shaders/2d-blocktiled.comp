@@ -1,0 +1,77 @@
+#version 430
+#define THREAD_COUNT 256
+#define BM 128
+#define BK 8
+#define BN 128
+#define TM 8 // This should always be BM / BK
+#define TN 8 // This should always be BN / BK
+
+layout(local_size_x = THREAD_COUNT, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer lay0 { float matA[]; };
+layout(std430, binding = 1) readonly buffer lay1 { float matB[]; };
+layout(std430, binding = 2) readonly buffer lay2 { uint dim[]; };
+
+layout(std430, binding = 3) buffer lay3 { float matOut[]; };
+
+shared float tileA[BM][BK];
+shared float tileB[BK][BN];
+
+void main() {
+  uvec3 blockIdx = gl_WorkGroupID;
+  uvec3 threadIdx = gl_LocalInvocationID;
+  uint M = dim[0];
+  uint K = dim[1];
+  uint N = dim[2];
+
+  uint tRow = blockIdx.x;
+  uint tCol = blockIdx.y;
+
+  uint totalResultsInBlockTile = BM * BN;
+  uint numThreadsPerBlockTile = totalResultsInBlockTile / (TM * TN);
+
+  uint threadRow = threadIdx.x / (BN / TN);
+  uint threadCol = threadIdx.x % (BN / TN);
+
+  uint a = tRow * BM * K;
+  uint b = tCol * BN;
+  uint c = tRow * BM * N + tCol * BN;
+
+  uint innerRowA = threadIdx.x / BK;
+  uint innerColA = threadIdx.x % BK;
+  uint strideA = numThreadsPerBlockTile / BK; // (256 / 8) = 32;
+
+  uint innerRowB = threadIdx.x / BN;
+  uint innerColB = threadIdx.x % BN;
+  uint strideB = numThreadsPerBlockTile / BN; // (256 / 128) = 2;
+
+  float threadResults[TM][TN];
+
+  for (uint k = 0; k < TM; k++) {
+    for (uint m = 0; m < TN; m++) {
+      threadResults[k][m] = 0.0;
+    }
+  }
+  float regCacheM[TM] = float[TM](0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+  float regCacheN[TN] = float[TN](0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+
+  for (uint blkIdx = 0; blkIdx < K; blkIdx += BK) {
+    for (uint loadOffset = 0; loadOffset < BM; loadOffset += strideA) {
+      tileA[innerRowA + loadOffset][innerColA] =
+          matA[a + (innerRowA + loadOffset) * K + innerColA];
+    }
+    for (uint loadOffset = 0; loadOffset < BN; loadOffset += strideB) {
+      tileB[innerRowB + loadOffset][innerColB] =
+          matB[b + (innerRowB + loadOffset) * N + innerColB];
+    }
+    barrier();
+    a += BK;
+    b += BK * N;
+    for(uint dotIdx = 0 ; dotIdx < BK; dotIdx++){
+      for(uint i=0; i<TM; i++){
+        regCacheM[i] = 
+      }
+    }
+    barrier();
+  }
+}
